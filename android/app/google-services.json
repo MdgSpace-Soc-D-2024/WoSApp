@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1073439472535",
+    "project_id": "wosapp-a2214",
+    "storage_bucket": "wosapp-a2214.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1073439472535:android:50c52eda78611b5b71e2d2",
+        "android_client_info": {
+          "package_name": "com.example.wosapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCazxuu1WN9sOsjEroT2-RacAViGYHaH1g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
