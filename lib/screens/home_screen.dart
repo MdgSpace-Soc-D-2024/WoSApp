@@ -17,7 +17,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.deepPurpleAccent,
+        backgroundColor: Colors.white,
         title: Text(
           'WoSApp',
           style: TextStyle(

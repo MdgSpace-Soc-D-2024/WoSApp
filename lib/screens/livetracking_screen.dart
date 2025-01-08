@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:contacts_service/contacts_service.dart';
+import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 void main() async {
@@ -32,14 +32,14 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Contact> filteredContacts = []; // Store filtered contacts for search
   String searchQuery = '';
 
-  List<Contact> closeContacts = []; // Store the added "Close Contacts"
-  final TextEditingController nameController = TextEditingController();
-  final TextEditingController phoneController = TextEditingController();
+  List<Map<String, String>> closeContacts =
+      []; // Store the added "Close Contacts" from Firebase
 
   @override
   void initState() {
     super.initState();
     requestPermissions();
+    fetchCloseContactsFromFirebase();
   }
 
   // Request permissions to access contacts
@@ -55,11 +55,39 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Fetch contacts from the phone
   Future<void> fetchContacts() async {
-    Iterable<Contact> contacts = await ContactsService.getContacts();
-    setState(() {
-      phoneContacts = contacts.toList();
-      filteredContacts = phoneContacts; // Initialize filtered list
-    });
+    try {
+      final contacts = await FlutterContacts.getContacts(withProperties: true);
+      setState(() {
+        phoneContacts = contacts;
+        filteredContacts = phoneContacts; // Initialize filtered list
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Failed to load contacts: $e'),
+      ));
+    }
+  }
+
+  // Fetch close contacts from Firestore
+  Future<void> fetchCloseContactsFromFirebase() async {
+    try {
+      QuerySnapshot snapshot =
+          await _firestore.collection('close_contacts').get();
+      setState(() {
+        closeContacts = snapshot.docs
+            .map((doc) => {
+                  'name': doc['name'] as String,
+                  'phone': doc['phone'] as String,
+                  'id': doc.id as String, // Ensure type compatibility
+                })
+            .toList()
+            .cast<Map<String, String>>(); // Explicitly cast to the correct type
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Failed to fetch close contacts: $e'),
+      ));
+    }
   }
 
   // Filter contacts based on search query
@@ -72,7 +100,7 @@ class _HomeScreenState extends State<HomeScreen> {
               contact.displayName!.toLowerCase().contains(query.toLowerCase()))
           .toList();
     } else {
-      results = phoneContacts;
+      results = [];
     }
 
     setState(() {
@@ -84,45 +112,51 @@ class _HomeScreenState extends State<HomeScreen> {
   // Save selected contact to Firebase
   Future<void> saveContactToFirebase(String name, String phone) async {
     try {
-      // Store the contact in the Firestore "close_contacts" collection
-      await _firestore.collection('close_contacts').add({
+      // Check if contact already exists
+      bool exists = closeContacts.any((contact) => contact['phone'] == phone);
+      if (exists) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('$name is already in the Close Contacts list.'),
+        ));
+        return;
+      }
+
+      DocumentReference docRef =
+          await _firestore.collection('close_contacts').add({
         'name': name,
         'phone': phone,
         'timestamp': FieldValue.serverTimestamp(),
       });
+
+      setState(() {
+        closeContacts.add({'name': name, 'phone': phone, 'id': docRef.id});
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('$name has been added to Firebase.'),
       ));
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Failed to add contact to Firebase.'),
+        content: Text('Failed to add contact to Firebase: $e'),
       ));
     }
   }
 
-  // Add new contact to the "Close Contacts" list
-  void addCloseContact() {
-    String name = nameController.text;
-    String phone = phoneController.text;
-
-    if (name.isNotEmpty && phone.isNotEmpty) {
-      Contact newContact = Contact()
-        ..givenName = name
-        ..phones = [Item(label: 'mobile', value: phone)];
+  // Delete contact from Firebase
+  Future<void> deleteContactFromFirebase(String id) async {
+    try {
+      await _firestore.collection('close_contacts').doc(id).delete();
 
       setState(() {
-        closeContacts
-            .add(newContact); // Add the contact to the close contacts list
+        closeContacts.removeWhere((contact) => contact['id'] == id);
       });
 
-      // Save the contact to Firestore
-      saveContactToFirebase(name, phone);
-
-      nameController.clear();
-      phoneController.clear();
-    } else {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Please provide both name and phone number.'),
+        content: Text('Contact deleted successfully.'),
+      ));
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Failed to delete contact: $e'),
       ));
     }
   }
@@ -136,18 +170,65 @@ class _HomeScreenState extends State<HomeScreen> {
           preferredSize: Size.fromHeight(50),
           child: Padding(
             padding: const EdgeInsets.all(8.0),
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: 'Search contacts...',
-                prefixIcon: Icon(Icons.search),
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(25),
-                  borderSide: BorderSide.none,
+            child: Column(
+              children: [
+                TextField(
+                  decoration: InputDecoration(
+                    hintText: 'Search contacts...',
+                    prefixIcon: Icon(Icons.search),
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(25),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  onChanged: (query) {
+                    setState(() {
+                      searchQuery = query;
+                    });
+                    filterContacts(query);
+                  },
                 ),
-              ),
-              onChanged: filterContacts,
+                if (searchQuery.isNotEmpty && filteredContacts.isNotEmpty)
+                  Container(
+                    constraints: BoxConstraints(maxHeight: 200),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.grey.shade300,
+                          blurRadius: 5,
+                          offset: Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: filteredContacts.length,
+                      itemBuilder: (context, index) {
+                        Contact contact = filteredContacts[index];
+                        String name = contact.displayName ?? 'No Name';
+                        String phone = contact.phones.isNotEmpty
+                            ? contact.phones.first.number ?? 'No Number'
+                            : 'No Number';
+
+                        return ListTile(
+                          title: Text(name),
+                          subtitle: Text(phone),
+                          onTap: () {
+                            saveContactToFirebase(name, phone);
+                            setState(() {
+                              searchQuery = '';
+                              filteredContacts = [];
+                            });
+                          },
+                        );
+                      },
+                    ),
+                  ),
+              ],
             ),
           ),
         ),
@@ -157,32 +238,11 @@ class _HomeScreenState extends State<HomeScreen> {
           padding: const EdgeInsets.all(16.0),
           child: Column(
             children: [
-              // Add Contact Section
-              TextField(
-                controller: nameController,
-                decoration: InputDecoration(
-                  labelText: 'Enter Name',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              SizedBox(height: 10),
-              TextField(
-                controller: phoneController,
-                decoration: InputDecoration(
-                  labelText: 'Enter Phone Number',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.phone,
-              ),
-              SizedBox(height: 20),
               ElevatedButton(
-                onPressed: addCloseContact,
-                child: Text('Add Contact'),
+                onPressed: () {},
+                child: Text('Add New Contact'),
               ),
-
               SizedBox(height: 30),
-
-              // Display "Close Contacts"
               Container(
                 padding: EdgeInsets.all(10.0),
                 decoration: BoxDecoration(
@@ -194,10 +254,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     Text(
                       'Close Contacts',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style:
+                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                     ),
                     SizedBox(height: 10),
                     closeContacts.isNotEmpty
@@ -205,11 +263,11 @@ class _HomeScreenState extends State<HomeScreen> {
                             shrinkWrap: true,
                             itemCount: closeContacts.length,
                             itemBuilder: (context, index) {
-                              Contact contact = closeContacts[index];
-                              String name = contact.givenName ?? 'No Name';
-                              String phone = contact.phones?.isNotEmpty == true
-                                  ? contact.phones!.first.value ?? 'No Number'
-                                  : 'No Number';
+                              String name =
+                                  closeContacts[index]['name'] ?? 'No Name';
+                              String phone =
+                                  closeContacts[index]['phone'] ?? 'No Number';
+                              String id = closeContacts[index]['id'] ?? '';
 
                               return ListTile(
                                 leading: CircleAvatar(
@@ -217,6 +275,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                                 title: Text(name),
                                 subtitle: Text(phone),
+                                trailing: IconButton(
+                                  icon: Icon(Icons.delete, color: Colors.red),
+                                  onPressed: () =>
+                                      deleteContactFromFirebase(id),
+                                ),
                               );
                             },
                           )
@@ -226,37 +289,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
-
-              SizedBox(height: 30),
-
-              // Display Phone Contacts
-              phoneContacts.isEmpty
-                  ? Center(child: CircularProgressIndicator())
-                  : ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: filteredContacts.length,
-                      itemBuilder: (context, index) {
-                        Contact contact = filteredContacts[index];
-                        String name = contact.displayName ?? 'No Name';
-                        String phone = contact.phones?.isNotEmpty == true
-                            ? contact.phones!.first.value ?? 'No Number'
-                            : 'No Number';
-
-                        return ListTile(
-                          leading: CircleAvatar(
-                            child: Text(name[0].toUpperCase()),
-                          ),
-                          title: Text(name),
-                          subtitle: Text(phone),
-                          trailing: IconButton(
-                            icon: Icon(Icons.save, color: Colors.blue),
-                            onPressed: () {
-                              saveContactToFirebase(name, phone);
-                            },
-                          ),
-                        );
-                      },
-                    ),
             ],
           ),
         ),
