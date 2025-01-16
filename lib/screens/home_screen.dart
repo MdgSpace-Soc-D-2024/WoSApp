@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:wosapp/main.dart';
 import 'package:wosapp/reusable_widgets/reusable_widgets.dart';
 import 'package:wosapp/screens/gps_screen.dart';
 import 'package:wosapp/screens/livetracking_screen.dart';
@@ -89,7 +90,7 @@ class _HomeScreenState extends State<HomeScreen> {
               height: 100.0,
               width: 100.0,
               child: FloatingActionButton.large(
-                onPressed: () {},
+                onPressed: onSOSPressed,
                 backgroundColor: const Color.fromARGB(255, 150, 14, 4),
                 child: Text("SOS",
                     style: TextStyle(
@@ -130,5 +131,24 @@ class ProfilePage extends StatelessWidget {
         child: Text('This is the Profile Page'),
       ),
     );
+  }
+}
+
+void onSOSPressed() async {
+  try {
+    // Step 1: Fetch all phone numbers from Firebase
+    List<String> phoneNumbers = await fetchPhoneNumbers();
+
+    // Step 2: SOS message
+    String message = 'Help! I am in danger. Please assist me immediately.';
+
+    // Step 3: Send SMS to each contact
+    for (var phoneNumber in phoneNumbers) {
+      await sendSms(phoneNumber, message);
+    }
+
+    print('SOS alerts sent successfully!');
+  } catch (e) {
+    print('Error sending SOS alerts: $e');
   }
 }

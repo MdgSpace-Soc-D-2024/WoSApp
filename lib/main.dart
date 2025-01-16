@@ -2,8 +2,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:wosapp/screens/signin_screen.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 void main() async {
+  await dotenv.load(fileName: "Twilio.env");
   WidgetsFlutterBinding.ensureInitialized();
   if (kIsWeb) {
     await Firebase.initializeApp(
@@ -74,6 +78,34 @@ class wosapp extends StatelessWidget {
     return MaterialApp(
       home: const Signin(),
     );
+  }
+}
+
+Future<void> sendSms(String phoneNumber, String message) async {
+  String accountSid = dotenv.env['twilio_accountSid'] ?? '';
+  String authToken = dotenv.env['twilio_authToken'] ?? '';
+  String fromPhoneNumber = dotenv.env['twilio_fromPhoneNumber'] ?? '';
+
+  final Uri url = Uri.parse(
+      'https://api.twilio.com/2010-04-01/Accounts/$accountSid/Messages.json');
+
+  final response = await http.post(
+    url,
+    headers: {
+      'Authorization':
+          'Basic ${base64Encode(utf8.encode('$accountSid:$authToken'))}',
+    },
+    body: {
+      'From': fromPhoneNumber,
+      'To': phoneNumber,
+      'Body': message,
+    },
+  );
+
+  if (response.statusCode == 201 || response.statusCode == 200) {
+    print('SMS sent successfully!');
+  } else {
+    throw Exception('Failed to send SMS: ${response.body}');
   }
 }
 
