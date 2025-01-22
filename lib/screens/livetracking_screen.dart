@@ -1,8 +1,13 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:http/http.dart' as http;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,6 +32,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  bool isTracking = false;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   List<Contact> phoneContacts = []; // Store device contacts
   List<Contact> filteredContacts = []; // Store filtered contacts for search
@@ -339,13 +345,122 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
+          SizedBox(height: 30),
+          ElevatedButton(
+            onPressed: isTracking ? null : startLiveTracking,
+            child: Text('Start Live Tracking'),)
             ],
           ),
         ),
       ),
     );
   }
+  void startLiveTracking() async {
+    setState(() {
+      isTracking = true;
+    });
+
+    // Use geolocator to get current location
+    Geolocator.getPositionStream().listen((Position position) async {
+      // Send data to Firestore and send SMS with Twilio
+      updateLocationInFirestore(position.latitude, position.longitude);
+      // Send SMS to close contacts
+      bool smsSent = await sendSmsToContacts(position.latitude, position.longitude);
+
+      // Show a Snackbar based on the SMS status
+      if (smsSent) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Live tracking activated. SMS sent to close contacts.'),
+            duration: Duration(seconds: 3),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to send SMS. Please try again.'),
+            duration: Duration(seconds: 3),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    });
+  }
+
+
+  // Method to update location in Firestore
+  void updateLocationInFirestore(double latitude, double longitude) {
+    FirebaseFirestore.instance.collection('locations').doc('user123').set({
+      'userId': 'user123',
+      'latitude': latitude,
+      'longitude': longitude,
+      'timestamp': DateTime.now().toIso8601String(),
+    }, SetOptions(merge: true)); // Ensures the document is continuously updated
+  }
+
+
+  // Method to send SMS with Twilio
+  Future<bool> sendSmsToContacts(double latitude, double longitude) async {
+    String accountSid = dotenv.env['twilio_accountSid'] ?? '';
+    String authToken = dotenv.env['twilio_authToken'] ?? '';
+    String fromPhoneNumber = dotenv.env['twilio_fromPhoneNumber'] ?? '';
+    String link = 'https://www.google.com/maps?q=$latitude,$longitude';
+    var url = Uri.parse('https://api.twilio.com/2010-04-01/Accounts/$accountSid/Messages.json');
+
+    try {
+      // Fetch contacts from Firestore
+      List<String> contacts = await fetchCloseContacts();
+
+      // Loop through each contact and send SMS
+      for (String contact in contacts) {
+        var response = await http.post(
+          url,
+          headers: {
+            'Authorization': 'Basic ${base64Encode(utf8.encode('$accountSid:$authToken'))}',
+          },
+          body: {
+            'From': fromPhoneNumber, // Twilio phone number
+            'To': contact,          // Recipient phone number
+            'Body': 'USER WANT TO SHARE LIVE LOCATION WITH YOU!! Track them here: https://wosapp-a2214.web.app',
+
+          },
+        );
+
+        // Check if SMS failed for any contact
+        if (response.statusCode != 201) {
+          print('Failed to send SMS to $contact. Response: ${response.body}');
+          return false;
+        }
+      }
+
+      // All SMS successfully sent
+      return true;
+    } catch (e) {
+      print('Error sending SMS: $e');
+      return false;
+    }
+  }
+
+
+// Function to fetch contacts from Firestore
+  Future<List<String>> fetchCloseContacts() async {
+    List<String> contacts = [];
+    final snapshot = await FirebaseFirestore.instance.collection('close_contacts').get();
+    for (var doc in snapshot.docs) {
+      contacts.add(doc['phone']); // Assumes 'phone' field contains the contact number
+    }
+    return contacts;
+  }
+
 }
+Future<void> requestLocationPermission() async {
+  LocationPermission permission = await Geolocator.requestPermission();
+  if (permission == LocationPermission.denied) {
+    // Handle permission denial
+  }
+}
+
 
 // import 'package:flutter/material.dart';
 // import 'package:firebase_core/firebase_core.dart';

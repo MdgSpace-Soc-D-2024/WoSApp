@@ -1,1 +1,33 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"wosapp-a2214","appId":"1:1073439472535:android:50c52eda78611b5b71e2d2","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"wosapp-a2214","configurations":{"android":"1:1073439472535:android:50c52eda78611b5b71e2d2","ios":"1:1073439472535:ios:ea04ec7eb191f99171e2d2","macos":"1:1073439472535:ios:ea04ec7eb191f99171e2d2","web":"1:1073439472535:web:061e579e9018edab71e2d2","windows":"1:1073439472535:web:197345b0d8bc805c71e2d2"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "wosapp-a2214",
+          "appId": "1:1073439472535:android:50c52eda78611b5b71e2d2",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "wosapp-a2214",
+          "configurations": {
+            "android": "1:1073439472535:android:50c52eda78611b5b71e2d2",
+            "ios": "1:1073439472535:ios:ea04ec7eb191f99171e2d2",
+            "macos": "1:1073439472535:ios:ea04ec7eb191f99171e2d2",
+            "web": "1:1073439472535:web:061e579e9018edab71e2d2",
+            "windows": "1:1073439472535:web:197345b0d8bc805c71e2d2"
+          }
+        }
+      }
+    }
+  },
+  "hosting": {
+    "public": "public",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ]
+  }
+}

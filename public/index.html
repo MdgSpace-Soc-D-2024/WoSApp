@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Real-Time Location Tracking</title>
+  <!-- Firebase SDK (v8 non-modular style) -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+
+  <!-- Google Maps API -->
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDkeWoxk2BfklS12ibfqzcWRDleeAIxn-8"></script>
+</head>
+<body>
+<h1>Welcome to Real-Time Location Tracking</h1>
+<h2>Track the User</h2>
+<div id="map" style="height: 500px; width: 100%;"></div>
+
+<script>
+  // Firebase configuration
+  const firebaseConfig = {
+    apiKey: "AIzaSyBad89bzJSNUhB5ynMUds8BokejP2QiGM4",
+    authDomain: "wosapp-a2214.firebaseapp.com",
+    projectId: "wosapp-a2214",
+    storageBucket: "wosapp-a2214.firebasestorage.app",
+    messagingSenderId: "1073439472535",
+    appId: "1:1073439472535:web:061e579e9018edab71e2d2",
+    measurementId: "G-QB04FM108G"
+  };
+
+  // Initialize Firebase
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore(); // Firestore instance
+
+  // Initialize Google Maps
+  const map = new google.maps.Map(document.getElementById('map'), {
+    zoom: 15,
+    center: { lat: 0, lng: 0 }, // Default center if location is not available
+  });
+
+  const marker = new google.maps.Marker({
+    position: { lat: 0, lng: 0 },
+    map: map,
+    title: 'User Location',
+  });
+
+  // Fetch real-time location from Firestore
+  const userId = new URLSearchParams(window.location.search).get('userId');
+  db.collection('locations').doc(userId).onSnapshot((doc) => {
+    if (doc.exists) {
+      const data = doc.data();
+      const newPos = { lat: data.latitude, lng: data.longitude };
+      map.setCenter(newPos);
+      marker.setPosition(newPos);
+    } else {
+      console.error('No such document!');
+    }
+  });
+</script>
+</body>
+</html>
