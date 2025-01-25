@@ -1,8 +1,18 @@
 import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crypto/crypto.dart';
+import 'package:dialogflow_flutter/dialogflowFlutter.dart';
+import 'package:dialogflow_flutter/googleAuth.dart';
+import 'package:dialogflow_flutter/language.dart';
+import 'package:encrypt/encrypt.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:pointycastle/api.dart' as pc;
+import 'package:pointycastle/digests/sha256.dart';
 import 'package:uni_links5/uni_links.dart';
 import 'package:wosapp/main.dart';
 import 'package:wosapp/reusable_widgets/reusable_widgets.dart';
@@ -11,7 +21,6 @@ import 'package:wosapp/screens/livetracking_screen.dart';
 import 'package:wosapp/screens/signin_screen.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:uuid/uuid.dart';
-
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -155,7 +164,7 @@ class ProfilePage extends StatelessWidget {
 }
 
 void onSOSPressed() async {
-  await dotenv.load(fileName: "Dialogflow.env");
+  //await dotenv.load(fileName: "Dialogflow.env");
   try {
     // Step 1: Fetch all phone numbers from Firebase
     List<String> phoneNumbers = await fetchPhoneNumbers();
@@ -174,144 +183,99 @@ void onSOSPressed() async {
   }
 }
 
-// Chatbot Integration
-class DialogflowService {
-  final String projectId = dotenv.env['project_id'] ?? '';
-  final String sessionId = Uuid().v4();
-  final String languageCode = "en";
-  final String serviceAccountKeyPath = "assets/robo-way-nafc-5b483855702a.json";
-
-  Future<String> sendMessage(String message, BuildContext context) async {
-    // Load service account credentials
-    final jsonKey = await DefaultAssetBundle.of(context)
-        .loadString(serviceAccountKeyPath);
-    final credentials = json.decode(jsonKey);
-
-    // Generate JWT for authentication
-    final token = await _getAccessToken(credentials);
-
-    // API URL
-    final url =
-        "https://dialogflow.googleapis.com/v2/projects/$projectId/agent/sessions/$sessionId:detectIntent";
-
-    // Request body
-    final body = jsonEncode({
-      "queryInput": {
-        "text": {
-          "text": message,
-          "languageCode": languageCode,
-        }
-      }
-    });
-
-    // Send POST request to Dialogflow
-    final response = await http.post(
-      Uri.parse(url),
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer $token",
-      },
-      body: body,
-    );
-
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return data["queryResult"]["fulfillmentText"] ?? "No response from bot.";
-    } else {
-      throw Exception(
-          "Failed to communicate with Dialogflow API: ${response.body}");
-    }
-  }
-
-  Future<String> _getAccessToken(Map<String, dynamic> credentials) async {
-    final iat = DateTime.now().millisecondsSinceEpoch ~/ 1000; // Issued at
-    final exp = iat + 3600; // Expiry (1 hour)
-    final header = {'alg': 'RS256', 'typ': 'JWT'};
-    final payload = {
-      'iss': credentials['client_email'],
-      'sub': credentials['client_email'],
-      'aud': 'https://oauth2.googleapis.com/token',
-      'iat': iat,
-      'exp': exp,
-    };
-
-    // Encode header and payload to Base64Url
-    final headerBase64 = base64Url.encode(utf8.encode(json.encode(header)));
-    final payloadBase64 = base64Url.encode(utf8.encode(json.encode(payload)));
-
-    // Create the JWT signature
-    final signatureInput = '$headerBase64.$payloadBase64';
-    final key = utf8.encode(credentials['private_key']);
-    final hmac = Hmac(sha256, key);
-    final signature = base64Url.encode(hmac.convert(utf8.encode(signatureInput)).bytes);
-
-    // Combine all parts to form the JWT
-    final jwt = '$signatureInput.$signature';
-
-    // Exchange JWT for an access token
-    final response = await http.post(
-      Uri.parse('https://oauth2.googleapis.com/token'),
-      headers: {"Content-Type": "application/x-www-form-urlencoded"},
-      body: {
-        'grant_type': 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-        'assertion': jwt,
-      },
-    );
-
-    if (response.statusCode == 200) {
-      final responseData = json.decode(response.body);
-      return responseData['access_token'];
-    } else {
-      throw Exception("Failed to generate access token: ${response.body}");
-    }
-  }
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
+  runApp(MaterialApp(home: ChatScreen()));
 }
+
 class ChatScreen extends StatefulWidget {
   @override
   _ChatScreenState createState() => _ChatScreenState();
 }
 
 class _ChatScreenState extends State<ChatScreen> {
+  final List<Map<String, dynamic>> messages = [];
   final TextEditingController _controller = TextEditingController();
-  final List<String> _messages = [];
-  final DialogflowService _dialogflow = DialogflowService();
 
-  void _sendMessage() async {
-    final message = _controller.text.trim();
+  // Reference to Firestore Collection
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  void sendMessage(String message) async {
     if (message.isEmpty) return;
 
+    // Add user message locally
     setState(() {
-      _messages.add("You: $message");
+      messages.insert(0, {'text': message, 'isUser': true});
+    });
+
+    // Save user message to Firestore
+    await _firestore.collection('chats').add({
+      'text': message,
+      'isUser': true,
+      'timestamp': Timestamp.now(),
     });
 
     _controller.clear();
 
-    try {
-      final response = await _dialogflow.sendMessage(message, context); // Pass context here
-      setState(() {
-        _messages.add("Bot: $response");
-      });
-    } catch (e) {
-      setState(() {
-        _messages.add("Error: Unable to reach the chatbot.");
-      });
-    }
+    // Initialize Dialogflow
+    final authGoogle = await AuthGoogle(fileJson: "assets/robo-way-nafc-5b483855702a.json").build();
+    final dialogflow = DialogFlow(authGoogle: authGoogle, language: Language.ENGLISH);
+
+    // Get response from Dialogflow
+    final response = await dialogflow.detectIntent(message);
+    final botMessage = response.getMessage() ?? "I didn't understand that!";
+
+    // Add bot message locally
+    setState(() {
+      messages.insert(0, {'text': botMessage, 'isUser': false});
+    });
+
+    // Save bot message to Firestore
+    await _firestore.collection('chats').add({
+      'text': botMessage,
+      'isUser': false,
+      'timestamp': Timestamp.now(),
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text("Chatbot"),
-        backgroundColor: Colors.green,
-      ),
+      appBar: AppBar(title: Text('Chatbot')),
       body: Column(
         children: [
           Expanded(
-            child: ListView.builder(
-              itemCount: _messages.length,
-              itemBuilder: (context, index) {
-                return ListTile(title: Text(_messages[index]));
+            child: StreamBuilder<QuerySnapshot>(
+              stream: _firestore.collection('chats').orderBy('timestamp', descending: true).snapshots(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return Center(child: CircularProgressIndicator());
+                }
+
+                final chatDocs = snapshot.data!.docs;
+                return ListView.builder(
+                  reverse: true,
+                  itemCount: chatDocs.length,
+                  itemBuilder: (context, index) {
+                    final message = chatDocs[index];
+                    return Align(
+                      alignment: message['isUser'] ? Alignment.centerRight : Alignment.centerLeft,
+                      child: Container(
+                        margin: EdgeInsets.symmetric(vertical: 5, horizontal: 10),
+                        padding: EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: message['isUser'] ? Colors.blue : Colors.grey[300],
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          message['text'],
+                          style: TextStyle(color: message['isUser'] ? Colors.white : Colors.black),
+                        ),
+                      ),
+                    );
+                  },
+                );
               },
             ),
           ),
@@ -322,12 +286,18 @@ class _ChatScreenState extends State<ChatScreen> {
                 Expanded(
                   child: TextField(
                     controller: _controller,
-                    decoration: InputDecoration(labelText: "Type a message"),
+                    decoration: InputDecoration(
+                      hintText: "Type your message...",
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
                   ),
                 ),
+                SizedBox(width: 10),
                 IconButton(
-                  icon: Icon(Icons.send),
-                  onPressed: _sendMessage,
+                  icon: Icon(Icons.send, color: Colors.blue),
+                  onPressed: () => sendMessage(_controller.text),
                 ),
               ],
             ),
@@ -337,6 +307,16 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 }
+
+class MyApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: ChatScreen(),
+    );
+  }
+}
+
 
 //Deep linking for sos
 void initDeepLinking() async {
@@ -363,4 +343,39 @@ void sendSOSAlert() {
   // Your SOS logic (e.g., call emergency services, send an alert)
   print('SOS Alert sent!');
   onSOSPressed();
+}
+class MainScreen extends StatefulWidget {
+  @override
+  Chatbot_sos createState() => Chatbot_sos();
+}
+void chatbot() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
+  runApp(MyApp());
+}
+
+class Chatbot_sos extends State<MainScreen> {
+  @override
+  void initState() {
+    super.initState();
+
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      if (message.data['action'] == 'triggerSOS') {
+        triggerSOS();
+      }
+    });
+  }
+
+  void triggerSOS() {
+    // Your existing SOS functionality here
+    onSOSPressed();
+    print('SOS Activated!');
+    // Example: Navigate to an SOS screen or call your SOS function
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // TODO: implement build
+    throw UnimplementedError();
+  }
 }

@@ -52,6 +52,10 @@ dependencies:
   crypto: ^3.0.6
   uni_links_desktop: ^0.1.7
   uni_links5: ^0.5.4
+  jose: ^0.3.4
+  dart_jsonwebtoken: ^2.16.0
+  encrypt: ^5.0.3
+  pointycastle: ^3.9.1
 
 dev_dependencies:
   flutter_test:
