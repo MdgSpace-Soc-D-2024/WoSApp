@@ -56,6 +56,12 @@ dependencies:
   dart_jsonwebtoken: ^2.16.0
   encrypt: ^5.0.3
   pointycastle: ^3.9.1
+  google_maps_flutter: ^2.10.0
+  socket_io_client: ^3.0.2
+  fbroadcast: ^2.0.0
+  shared_preferences: ^2.5.1
+  web_socket_channel: ^3.0.2
+  location: ^8.0.0
 
 dev_dependencies:
   flutter_test:
