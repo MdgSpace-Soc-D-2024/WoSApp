@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/status.dart' as status;
+import 'package:socket_io_client/socket_io_client.dart' as IO;
 
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -361,22 +362,30 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   bool smsSent = false;
+  late IO.Socket socket;
   void startLiveTracking() async {
     setState(() {
       isTracking = true;
     });
 
-    // Use WebSocketChannel for cross-platform support
-    final channel = WebSocketChannel.connect(
-      Uri.parse(
-          'wss://live-location-tracking-zo66.onrender.com'), // Replace with your actual WebSocket server URL
+    // Initialize the Socket.IO connection
+    socket = IO.io(
+      'https://live-location-tracking-zo66.onrender.com', // Your Socket.IO server URL
+      IO.OptionBuilder()
+          .setTransports(['websocket']) // Use WebSocket as the transport method
+          .disableAutoConnect() // Disable auto-connect until you explicitly connect
+          .build(),
     );
 
+    // Connect to the server
+    socket.connect();
+
+    // Listen for location updates and send them to the server
     Geolocator.getPositionStream().listen((Position position) async {
       double latitude = position.latitude;
       double longitude = position.longitude;
 
-      sendLocationToChatroom(channel, latitude, longitude);
+      sendLocationToChatroom(latitude, longitude);
 
       if (!smsSent) {
         bool smsSuccess = await sendSmsToContacts();
@@ -393,31 +402,32 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     });
 
-    channel.stream.listen(
-      (message) {
-        print('Received from server: $message');
-      },
-      onDone: () {
-        print('WebSocket closed.');
-      },
-      onError: (error) {
-        print('WebSocket error: $error');
-      },
-    );
+    // Listen for messages from the server (for example, other users in the chatroom)
+    socket.on('message', (data) {
+      print('Received message from server: $data');
+    });
+
+    socket.on('disconnect', (_) {
+      print('Disconnected from server');
+    });
+
+    socket.on('connect_error', (error) {
+      print('Connection error: $error');
+    });
   }
 
-// Sends real-time location updates to WebSocket
-  void sendLocationToChatroom(
-      WebSocketChannel channel, double latitude, double longitude) {
+// Sends real-time location updates to the chatroom using Socket.IO
+  void sendLocationToChatroom(double latitude, double longitude) {
     final locationData = {
       'type': 'location',
       'latitude': latitude,
       'longitude': longitude,
     };
     // Log the location data before sending
-    print('Sending location data to WebSocket: $locationData');
+    print('Sending location data to chatroom: $locationData');
 
-    channel.sink.add(json.encode(locationData));
+    socket.emit(
+        'send location', locationData); // Emit the location to the server
   }
 
 // Sends SMS to contacts with the chatroom URL

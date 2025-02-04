@@ -8,22 +8,21 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-void sendSmsToContacts(double latitude, double longitude) async {
-  String link = 'https://www.google.com/maps?q=$latitude,$longitude';
-  var url = Uri.parse('http://your-server-ip/send-sms');
-  await http.post(url, body: {
-    'latitude': latitude.toString(),
-    'longitude': longitude.toString(),
-    'contacts': ['+1234567890', '+0987654321'],
-  });
-}
+// void sendSmsToContacts(double latitude, double longitude) async {
+//   String link = 'https://www.google.com/maps?q=$latitude,$longitude';
+//   var url = Uri.parse('http://your-server-ip/send-sms');
+//   await http.post(url, body: {
+//     'latitude': latitude.toString(),
+//     'longitude': longitude.toString(),
+//     'contacts': ['+1234567890', '+0987654321'],
+//   });
+// }
 Future<void> requestLocationPermission() async {
   LocationPermission permission = await Geolocator.requestPermission();
   if (permission == LocationPermission.denied) {
     // Handle permission denial
   }
 }
-
 
 void main() async {
   await dotenv.load(fileName: "Twilio.env");
@@ -127,8 +126,6 @@ Future<void> sendSms(String phoneNumber, String message) async {
     throw Exception('Failed to send SMS: ${response.body}');
   }
 }
-
-
 
 /*
 class MyHomePage extends StatefulWidget {

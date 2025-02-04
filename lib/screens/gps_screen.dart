@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:location/location.dart';
+import 'package:location/location.dart' as loc;
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_api_headers/google_api_headers.dart';
+import 'package:google_maps_webservice/places.dart' as point;
+import 'package:flutter_google_places_sdk/flutter_google_places_sdk.dart'
+    as auto;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -33,10 +37,49 @@ class _GPSNavigationScreenState extends State<GPSNavigationScreen> {
   Set<Polyline> _polylines = {};
   List<String> _directions = [];
   List<LatLng> _routeCoordinates = [];
-  Location _location = Location();
-  late Stream<LocationData> _locationStream;
+  loc.Location _location = loc.Location();
+  late Stream<loc.LocationData> _locationStream;
   Map<String, int> _routeReports = {}; // Track reports for each route
-  List<LatLng> _unsafeRoutes = []; // Unsafe routes based on reports
+
+  TextEditingController _startController = TextEditingController();
+  TextEditingController _endController = TextEditingController();
+
+  get placesSdk => null;
+
+  Future<void> handlePlaceSearch(
+      String query, bool isStart, TextEditingController controller) async {
+    // Fetch autocomplete predictions
+    final result = await placesSdk.findAutocompletePredictions(
+      query,
+      countries: ["IN"], // Limit search to India (optional)
+    );
+
+    if (result.predictions.isNotEmpty) {
+      final selectedPrediction = result.predictions.first;
+
+      // Fetch place details using place ID
+      final details = await point.GoogleMapsPlaces(
+              apiKey: "AIzaSyBh-_JWFESJ5MDxUbdUJ_P5xoKFEiR_LW8")
+          .getDetailsByPlaceId(selectedPrediction.placeId!);
+
+      if (details.status == "OK") {
+        double lat = details.result.geometry!.location.lat;
+        double lng = details.result.geometry!.location.lng;
+        String address = details.result.formattedAddress!;
+
+        controller.text = address; // Set the address in TextField
+
+        print("Selected Place: $address");
+        print("Latitude: $lat, Longitude: $lng");
+
+        // You can now use lat/lng for mapping, routing, etc.
+      } else {
+        print("Error fetching place details: ${details.status}");
+      }
+    } else {
+      print("No predictions found!");
+    }
+  }
 
   @override
   void initState() {
@@ -55,10 +98,9 @@ class _GPSNavigationScreenState extends State<GPSNavigationScreen> {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
 
-        // Check if the response contains valid route data
-        if (data != null &&
-            data['routes'] != null &&
-            data['routes'].isNotEmpty) {
+        print('Fetched directions: ${data['routes']}');
+
+        if (data['routes'] != null && data['routes'].isNotEmpty) {
           List<LatLng> polylinePoints = [];
 
           for (var route in data['routes']) {
@@ -70,9 +112,11 @@ class _GPSNavigationScreenState extends State<GPSNavigationScreen> {
               }
             }
 
+            String routeId = route['overview_polyline']['points'];
+
             // Initially all routes will be green (safe)
             _polylines.add(Polyline(
-              polylineId: PolylineId(route['overview_polyline']['points']),
+              polylineId: PolylineId(routeId),
               points: polylinePoints,
               color: Colors.green, // Safe route initially
               width: 5,
@@ -82,20 +126,43 @@ class _GPSNavigationScreenState extends State<GPSNavigationScreen> {
           setState(() {
             _routeCoordinates = polylinePoints;
           });
+
+          if (_routeCoordinates.isNotEmpty) {
+            LatLngBounds bounds = _getBoundsFromCoordinates(_routeCoordinates);
+            if (_mapController != null) {
+              _mapController!
+                  .animateCamera(CameraUpdate.newLatLngBounds(bounds, 50));
+            }
+          }
         } else {
-          throw Exception('No routes found');
+          print('No routes found');
         }
       } else {
-        throw Exception('Failed to fetch directions');
+        print('Failed to fetch directions');
       }
     } catch (error) {
       print('Error fetching directions: $error');
     }
   }
 
+  // Get route bounds from coordinates
+  LatLngBounds _getBoundsFromCoordinates(List<LatLng> points) {
+    double? minLat, maxLat, minLng, maxLng;
+    for (var point in points) {
+      if (minLat == null || point.latitude < minLat) minLat = point.latitude;
+      if (maxLat == null || point.latitude > maxLat) maxLat = point.latitude;
+      if (minLng == null || point.longitude < minLng) minLng = point.longitude;
+      if (maxLng == null || point.longitude > maxLng) maxLng = point.longitude;
+    }
+    return LatLngBounds(
+      southwest: LatLng(minLat!, minLng!),
+      northeast: LatLng(maxLat!, maxLng!),
+    );
+  }
+
   // Start tracking user location
   void _startTrackingUser() {
-    _locationStream.listen((LocationData currentLocation) {
+    _locationStream.listen((loc.LocationData currentLocation) {
       setState(() {
         _userPosition =
             LatLng(currentLocation.latitude!, currentLocation.longitude!);
@@ -108,7 +175,6 @@ class _GPSNavigationScreenState extends State<GPSNavigationScreen> {
   }
 
   // Report unsafe areas in Firebase
-  // Report unsafe areas in Firebase
   void _reportUnsafeArea(LatLng location) async {
     await FirebaseFirestore.instance.collection('reports').add({
       'location': GeoPoint(location.latitude, location.longitude),
@@ -120,7 +186,7 @@ class _GPSNavigationScreenState extends State<GPSNavigationScreen> {
     _fetchAndUpdateRouteColors();
   }
 
-// Fetch reports from Firestore and update route colors
+  // Fetch reports from Firestore and update route colors
   void _fetchAndUpdateRouteColors() async {
     QuerySnapshot reportsSnapshot =
         await FirebaseFirestore.instance.collection('reports').get();
@@ -166,13 +232,27 @@ class _GPSNavigationScreenState extends State<GPSNavigationScreen> {
     setState(() {});
   }
 
-// Get route identifier from location (simplified for this example)
+  // Get route identifier from location (simplified for this example)
   String _getRouteIdFromLocation(LatLng location) {
-    // This should be based on actual route segments, but for now using coordinates as an identifier
     return "${location.latitude}_${location.longitude}";
   }
 
-//method to handle map creation
+  // Fetch location and convert it into LatLng
+  Future<LatLng> _getLocationFromPlace(String place) async {
+    final url =
+        'https://maps.googleapis.com/maps/api/geocode/json?address=$place&key=AIzaSyBh-_JWFESJ5MDxUbdUJ_P5xoKFEiR_LW8';
+    final response = await http.get(Uri.parse(url));
+    final data = json.decode(response.body);
+    if (data['results'].isNotEmpty) {
+      double lat = data['results'][0]['geometry']['location']['lat'];
+      double lng = data['results'][0]['geometry']['location']['lng'];
+      return LatLng(lat, lng);
+    } else {
+      throw Exception('Failed to get location');
+    }
+  }
+
+  // method to handle map creation
   void _onMapCreated(GoogleMapController controller) {
     _mapController = controller;
     if (_mapController != null) {
@@ -189,6 +269,40 @@ class _GPSNavigationScreenState extends State<GPSNavigationScreen> {
       appBar: AppBar(title: Text('GPS Navigation')),
       body: Column(
         children: [
+          // Location input fields
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: TextField(
+              controller: _startController,
+              decoration: InputDecoration(labelText: 'Enter Start Location'),
+              onChanged: (query) =>
+                  handlePlaceSearch(query, true, _startController),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: TextField(
+              controller: _endController,
+              decoration:
+                  InputDecoration(labelText: 'Enter Destination Location'),
+              onChanged: (query) =>
+                  handlePlaceSearch(query, false, _endController),
+            ),
+          ),
+          // Get Directions button
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: ElevatedButton(
+              onPressed: () async {
+                LatLng origin =
+                    await _getLocationFromPlace(_startController.text);
+                LatLng destination =
+                    await _getLocationFromPlace(_endController.text);
+                fetchDirections(origin, destination);
+              },
+              child: Text('Get Directions'),
+            ),
+          ),
           Expanded(
             child: GoogleMap(
               onMapCreated: _onMapCreated,
@@ -206,28 +320,6 @@ class _GPSNavigationScreenState extends State<GPSNavigationScreen> {
               polylines: _polylines,
               onLongPress: (LatLng tappedPoint) {
                 _reportUnsafeArea(tappedPoint); // Report unsafe area
-              },
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: ElevatedButton(
-              onPressed: () {
-                LatLng origin = _userPosition;
-                LatLng destination = LatLng(28.7041,
-                    77.2090); // Example destination (e.g., New Delhi to Gurgaon)
-                fetchDirections(origin, destination);
-              },
-              child: Text('Get Directions'),
-            ),
-          ),
-          Expanded(
-            child: ListView.builder(
-              itemCount: _directions.length,
-              itemBuilder: (context, index) {
-                return ListTile(
-                  title: Text(_directions[index]),
-                );
               },
             ),
           ),
