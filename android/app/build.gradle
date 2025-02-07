@@ -9,7 +9,7 @@ plugins {
 android {
     namespace  "com.example.wosapp"
     compileSdk  35//flutter.compileSdkVersion
-    //ndkVersion  flutter.ndkVersion
+    ndkVersion  flutter.ndkVersion
 
     compileOptions {
         sourceCompatibility  JavaVersion.VERSION_1_8
@@ -17,7 +17,7 @@ android {
     }
 
     kotlinOptions {
-        jvmTarget = "1.8"// JavaVersion.VERSION_1_8
+        jvmTarget = JavaVersion.VERSION_1_8
     }
 
     defaultConfig {

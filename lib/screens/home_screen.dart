@@ -178,13 +178,10 @@ class ProfilePage extends StatelessWidget {
 void onSOSPressed() async {
   //await dotenv.load(fileName: "Dialogflow.env");
   try {
-    // Step 1: Fetch all phone numbers from Firebase
     List<String> phoneNumbers = await fetchPhoneNumbers();
 
-    // Step 2: SOS message
     String message = 'Help! I am in danger. Please assist me immediately.';
 
-    // Step 3: Send SMS to each contact
     for (var phoneNumber in phoneNumbers) {
       await sendSms(phoneNumber, message);
     }
@@ -210,18 +207,15 @@ class _ChatScreenState extends State<ChatScreen> {
   final List<Map<String, dynamic>> messages = [];
   final TextEditingController _controller = TextEditingController();
 
-  // Reference to Firestore Collection
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   void sendMessage(String message) async {
     if (message.isEmpty) return;
 
-    // Add user message locally
     setState(() {
       messages.insert(0, {'text': message, 'isUser': true});
     });
 
-    // Save user message to Firestore
     await _firestore.collection('chats').add({
       'text': message,
       'isUser': true,
@@ -230,23 +224,25 @@ class _ChatScreenState extends State<ChatScreen> {
 
     _controller.clear();
 
-    // Initialize Dialogflow
     final authGoogle =
         await AuthGoogle(fileJson: "assets/robo-way-nafc-5b483855702a.json")
             .build();
     final dialogflow =
         DialogFlow(authGoogle: authGoogle, language: Language.ENGLISH);
 
-    // Get response from Dialogflow
     final response = await dialogflow.detectIntent(message);
     final botMessage = response.getMessage() ?? "I didn't understand that!";
 
-    // Add bot message locally
     setState(() {
       messages.insert(0, {'text': botMessage, 'isUser': false});
     });
+    if (response.queryResult?.intent?.displayName == "SOS") {
+      onSOSPressed();
+    }
+    else (response.queryResult?.intent?.displayName == "Following") {
+      startLiveTracking();
+    }
 
-    // Save bot message to Firestore
     await _firestore.collection('chats').add({
       'text': botMessage,
       'isUser': false,
@@ -343,20 +339,16 @@ class MyApp extends StatelessWidget {
   }
 }
 
-//Deep linking for sos
 void initDeepLinking() async {
-  // Handle the incoming deep link
   try {
     final link = await getInitialLink();
     if (link != null && link.contains('sos')) {
-      // Trigger your SOS logic (e.g., call emergency services, notify authorities, etc.)
       sendSOSAlert();
     }
   } catch (e) {
     print('Error: $e');
   }
 
-  // You can also listen for new deep links while the app is running
   linkStream.listen((link) {
     if (link != null && link.contains('sos')) {
       sendSOSAlert();
@@ -365,44 +357,42 @@ void initDeepLinking() async {
 }
 
 void sendSOSAlert() {
-  // Your SOS logic (e.g., call emergency services, send an alert)
   print('SOS Alert sent!');
   onSOSPressed();
 }
 
-class MainScreen extends StatefulWidget {
-  @override
-  Chatbot_sos createState() => Chatbot_sos();
-}
+// class MainScreen extends StatefulWidget {
+//   @override
+//   Chatbot_sos createState() => Chatbot_sos();
+// }
 
-void chatbot() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
-  runApp(MyApp());
-}
+// void chatbot() async {
+//   WidgetsFlutterBinding.ensureInitialized();
+//   await Firebase.initializeApp();
+//   runApp(MyApp());
+// }
 
-class Chatbot_sos extends State<MainScreen> {
-  @override
-  void initState() {
-    super.initState();
+// class Chatbot_sos extends State<MainScreen> {
+//   @override
+//   void initState() {
+//     super.initState();
+//     print("called");
 
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      if (message.data['action'] == 'triggerSOS') {
-        triggerSOS();
-      }
-    });
-  }
+//     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+//       print(message.data);
+//       if (message.data['action'] == 'triggerSOS') {
+//         triggerSOS();
+//       }
+//     });
+//   }
 
-  void triggerSOS() {
-    // Your existing SOS functionality here
-    onSOSPressed();
-    print('SOS Activated!');
-    // Example: Navigate to an SOS screen or call your SOS function
-  }
+//   void triggerSOS() {
+//     onSOSPressed();
+//     print('SOS Activated!');
+//   }
 
-  @override
-  Widget build(BuildContext context) {
-    // TODO: implement build
-    throw UnimplementedError();
-  }
-}
+//   @override
+//   Widget build(BuildContext context) {
+//     throw UnimplementedError();
+//   }
+// }

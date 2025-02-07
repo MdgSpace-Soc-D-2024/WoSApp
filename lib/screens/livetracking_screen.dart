@@ -15,7 +15,7 @@ import 'package:http/http.dart' as http;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(); // Initialize Firebase
+  await Firebase.initializeApp(); 
   runApp(LiveTrackingScreen());
 }
 
@@ -38,12 +38,12 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   bool isTracking = false;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  List<Contact> phoneContacts = []; // Store device contacts
-  List<Contact> filteredContacts = []; // Store filtered contacts for search
+  List<Contact> phoneContacts = []; 
+  List<Contact> filteredContacts = []; 
   String searchQuery = '';
 
   List<Map<String, String>> closeContacts =
-      []; // Store the added "Close Contacts" from Firebase
+      []; 
 
   @override
   void initState() {
@@ -52,7 +52,7 @@ class _HomeScreenState extends State<HomeScreen> {
     fetchCloseContactsFromFirebase();
   }
 
-  // Request permissions to access contacts
+  
   Future<void> requestPermissions() async {
     if (await Permission.contacts.request().isGranted) {
       fetchContacts();
@@ -63,7 +63,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // Fetch contacts from the phone
+  
   Future<void> fetchContacts() async {
     try {
       final contacts = await FlutterContacts.getContacts(withProperties: true);
@@ -78,7 +78,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // Fetch close contacts from Firestore
+
   Future<void> fetchCloseContactsFromFirebase() async {
     try {
       QuerySnapshot snapshot =
@@ -88,10 +88,10 @@ class _HomeScreenState extends State<HomeScreen> {
             .map((doc) => {
                   'name': doc['name'] as String,
                   'phone': doc['phone'] as String,
-                  'id': doc.id as String, // Ensure type compatibility
+                  'id': doc.id as String, 
                 })
             .toList()
-            .cast<Map<String, String>>(); // Explicitly cast to the correct type
+            .cast<Map<String, String>>(); 
       });
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -100,7 +100,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // Filter contacts based on search query
+  
   void filterContacts(String query) {
     List<Contact> results = [];
     if (query.isNotEmpty) {
@@ -119,10 +119,10 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  // Save selected contact to Firebase
+  
   Future<void> saveContactToFirebase(String name, String phone) async {
     try {
-      // Check if contact already exists
+      
       bool exists = closeContacts.any((contact) => contact['phone'] == phone);
       if (exists) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -152,7 +152,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // Delete contact from Firebase
+  
   Future<void> deleteContactFromFirebase(String id) async {
     try {
       await _firestore.collection('close_contacts').doc(id).delete();
@@ -171,7 +171,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // Show dialog to add new contact manually
+  
   void showAddContactDialog() {
     String name = '';
     String phone = '';
@@ -368,19 +368,19 @@ class _HomeScreenState extends State<HomeScreen> {
       isTracking = true;
     });
 
-    // Initialize the Socket.IO connection
+    
     socket = IO.io(
-      'https://live-location-tracking-zo66.onrender.com', // Your Socket.IO server URL
+      'https://live-location-tracking-zo66.onrender.com', 
       IO.OptionBuilder()
-          .setTransports(['websocket']) // Use WebSocket as the transport method
-          .disableAutoConnect() // Disable auto-connect until you explicitly connect
+          .setTransports(['websocket']) 
+          .disableAutoConnect() 
           .build(),
     );
 
-    // Connect to the server
+    
     socket.connect();
 
-    // Listen for location updates and send them to the server
+    
     Geolocator.getPositionStream().listen((Position position) async {
       double latitude = position.latitude;
       double longitude = position.longitude;
@@ -402,7 +402,6 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     });
 
-    // Listen for messages from the server (for example, other users in the chatroom)
     socket.on('message', (data) {
       print('Received message from server: $data');
     });
@@ -416,27 +415,24 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-// Sends real-time location updates to the chatroom using Socket.IO
   void sendLocationToChatroom(double latitude, double longitude) {
     final locationData = {
       'type': 'location',
       'latitude': latitude,
       'longitude': longitude,
     };
-    // Log the location data before sending
     print('Sending location data to chatroom: $locationData');
 
     socket.emit(
-        'send location', locationData); // Emit the location to the server
+        'send location', locationData); 
   }
 
-// Sends SMS to contacts with the chatroom URL
+
   Future<bool> sendSmsToContacts() async {
     String accountSid = dotenv.env['twilio_accountSid'] ?? '';
     String authToken = dotenv.env['twilio_authToken'] ?? '';
     String fromPhoneNumber = dotenv.env['twilio_fromPhoneNumber'] ?? '';
 
-    // Chatroom URL where location updates will be visible
     String chatroomURL = "https://live-location-tracking-zo66.onrender.com";
 
     var url = Uri.parse(
@@ -472,15 +468,13 @@ class _HomeScreenState extends State<HomeScreen> {
       return false;
     }
   }
-
-// Function to fetch contacts from Firestore
   Future<List<String>> fetchCloseContacts() async {
     List<String> contacts = [];
     final snapshot =
         await FirebaseFirestore.instance.collection('close_contacts').get();
     for (var doc in snapshot.docs) {
       contacts.add(
-          doc['phone']); // Assumes 'phone' field contains the contact number
+          doc['phone']); 
     }
     return contacts;
   }

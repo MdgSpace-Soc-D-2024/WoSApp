@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:wosapp/reusable_widgets/reusable_widgets.dart';
 import 'package:wosapp/screens/home_screen.dart';
@@ -64,12 +65,30 @@ class _SigninState extends State<Signin> {
                               email: _emailTextController.text,
                               password: _passwordTextController.text)
                           .then((value) {
-                        Navigator.push(
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              "LOGIN Successfully",
+                              style: TextStyle(color: Colors.white),
+                            ),
+                            backgroundColor: Colors.lightGreen,
+                          ),
+                        );
+                        Navigator.pushReplacement(
                             context,
                             MaterialPageRoute(
                                 builder: (context) => HomeScreen()));
                       }).onError((error, stackTrace) {
                         print("Error ${error.toString()}");
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              "Incorrect Email ID or Password",
+                              style: TextStyle(color: Colors.white),
+                            ),
+                            backgroundColor: Colors.redAccent,
+                          ),
+                        );
                       });
                     }),
                     signUpOption()
