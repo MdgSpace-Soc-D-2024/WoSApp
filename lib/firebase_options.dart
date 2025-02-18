@@ -3,17 +3,13 @@
 import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
+void main() async {
+  await dotenv.load(fileName: "firebase.env");
+}
 
 /// Default [FirebaseOptions] for use with your Firebase apps.
-///
-/// Example:
-/// ```dart
-/// import 'firebase_options.dart';
-/// // ...
-/// await Firebase.initializeApp(
-///   options: DefaultFirebaseOptions.currentPlatform,
-/// );
-/// ```
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
@@ -40,9 +36,9 @@ class DefaultFirebaseOptions {
     }
   }
 
-  static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyBad89bzJSNUhB5ynMUds8BokejP2QiGM4',
-    appId: '1:1073439472535:web:061e579e9018edab71e2d2',
+  static FirebaseOptions web = FirebaseOptions(
+    apiKey: dotenv.env["webapiKey"] ?? '',
+    appId: dotenv.env["webappId"] ?? '',
     messagingSenderId: '1073439472535',
     projectId: 'wosapp-a2214',
     authDomain: 'wosapp-a2214.firebaseapp.com',
@@ -50,35 +46,35 @@ class DefaultFirebaseOptions {
     measurementId: 'G-QB04FM108G',
   );
 
-  static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyCazxuu1WN9sOsjEroT2-RacAViGYHaH1g',
-    appId: '1:1073439472535:android:50c52eda78611b5b71e2d2',
+  static FirebaseOptions android = FirebaseOptions(
+    apiKey: dotenv.env["androidapiKey"] ?? '',
+    appId: dotenv.env["androidappId"] ?? '',
     messagingSenderId: '1073439472535',
     projectId: 'wosapp-a2214',
     storageBucket: 'wosapp-a2214.firebasestorage.app',
   );
 
-  static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyCp6SeaSYe7Wo_MiF7PQkb7Pr1zk3C-S5A',
-    appId: '1:1073439472535:ios:ea04ec7eb191f99171e2d2',
-    messagingSenderId: '1073439472535',
-    projectId: 'wosapp-a2214',
-    storageBucket: 'wosapp-a2214.firebasestorage.app',
-    iosBundleId: 'com.example.wosapp',
-  );
-
-  static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyCp6SeaSYe7Wo_MiF7PQkb7Pr1zk3C-S5A',
-    appId: '1:1073439472535:ios:ea04ec7eb191f99171e2d2',
+  static FirebaseOptions ios = FirebaseOptions(
+    apiKey: dotenv.env["iosapiKey"] ?? '',
+    appId: dotenv.env["iosappId"] ?? '',
     messagingSenderId: '1073439472535',
     projectId: 'wosapp-a2214',
     storageBucket: 'wosapp-a2214.firebasestorage.app',
     iosBundleId: 'com.example.wosapp',
   );
 
-  static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyBad89bzJSNUhB5ynMUds8BokejP2QiGM4',
-    appId: '1:1073439472535:web:197345b0d8bc805c71e2d2',
+  static FirebaseOptions macos = FirebaseOptions(
+    apiKey: dotenv.env["macosapiKey"] ?? '',
+    appId: dotenv.env["macosappId"] ?? '',
+    messagingSenderId: '1073439472535',
+    projectId: 'wosapp-a2214',
+    storageBucket: 'wosapp-a2214.firebasestorage.app',
+    iosBundleId: 'com.example.wosapp',
+  );
+
+  static FirebaseOptions windows = FirebaseOptions(
+    apiKey: dotenv.env["windowsapiKey"] ?? '',
+    appId: dotenv.env["windowsappId"] ?? '',
     messagingSenderId: '1073439472535',
     projectId: 'wosapp-a2214',
     authDomain: 'wosapp-a2214.firebaseapp.com',

@@ -7,22 +7,18 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 //import 'package:http/http.dart' as http;
 
 Future<List<String>> fetchPhoneNumbers() async {
-  // Reference to the 'close_contacts' collection in Firestore
   CollectionReference ref =
       FirebaseFirestore.instance.collection('close_contacts');
 
   try {
-    // Fetch the documents in the 'close_contacts' collection
     QuerySnapshot snapshot = await ref.get();
 
     if (snapshot.docs.isNotEmpty) {
       List<String> phoneNumbers = [];
 
-      // Loop through the documents and fetch phone numbers
       for (var doc in snapshot.docs) {
         Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
 
-        // Ensure the 'phone' field exists before adding to the list
         if (data['phone'] != null) {
           phoneNumbers.add(data['phone']);
         }

@@ -6,7 +6,6 @@ import 'package:wosapp/utls/color_utls.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({Key? key}) : super(key: key);
-
   @override
   _SignUpScreenState createState() => _SignUpScreenState();
 }

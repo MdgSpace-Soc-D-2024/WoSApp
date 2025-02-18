@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -7,7 +6,6 @@ import 'package:wosapp/screens/signin_screen.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:wosapp/screens/livetracking_screen.dart';
 
 Future<void> requestLocationPermission() async {
   LocationPermission permission = await Geolocator.requestPermission();
@@ -36,8 +34,6 @@ void main() async {
   runApp(MaterialApp(
     home: wosapp(),
   ));
-  final GlobalKey<_HomeScreenState> homeScreenKey =
-      GlobalKey<_HomeScreenState>();
 }
 
 class wosapp extends StatelessWidget {

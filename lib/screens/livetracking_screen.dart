@@ -1,7 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
-import 'package:web_socket_channel/web_socket_channel.dart';
-import 'package:web_socket_channel/status.dart' as status;
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 
 import 'package:flutter/material.dart';
@@ -15,7 +12,7 @@ import 'package:http/http.dart' as http;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(); 
+  await Firebase.initializeApp();
   runApp(LiveTrackingScreen());
 }
 
@@ -38,12 +35,11 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   bool isTracking = false;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  List<Contact> phoneContacts = []; 
-  List<Contact> filteredContacts = []; 
+  List<Contact> phoneContacts = [];
+  List<Contact> filteredContacts = [];
   String searchQuery = '';
 
-  List<Map<String, String>> closeContacts =
-      []; 
+  List<Map<String, String>> closeContacts = [];
 
   @override
   void initState() {
@@ -52,7 +48,6 @@ class _HomeScreenState extends State<HomeScreen> {
     fetchCloseContactsFromFirebase();
   }
 
-  
   Future<void> requestPermissions() async {
     if (await Permission.contacts.request().isGranted) {
       fetchContacts();
@@ -63,7 +58,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  
   Future<void> fetchContacts() async {
     try {
       final contacts = await FlutterContacts.getContacts(withProperties: true);
@@ -78,7 +72,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-
   Future<void> fetchCloseContactsFromFirebase() async {
     try {
       QuerySnapshot snapshot =
@@ -88,10 +81,10 @@ class _HomeScreenState extends State<HomeScreen> {
             .map((doc) => {
                   'name': doc['name'] as String,
                   'phone': doc['phone'] as String,
-                  'id': doc.id as String, 
+                  'id': doc.id as String,
                 })
             .toList()
-            .cast<Map<String, String>>(); 
+            .cast<Map<String, String>>();
       });
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -100,7 +93,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  
   void filterContacts(String query) {
     List<Contact> results = [];
     if (query.isNotEmpty) {
@@ -119,10 +111,8 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  
   Future<void> saveContactToFirebase(String name, String phone) async {
     try {
-      
       bool exists = closeContacts.any((contact) => contact['phone'] == phone);
       if (exists) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -152,7 +142,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  
   Future<void> deleteContactFromFirebase(String id) async {
     try {
       await _firestore.collection('close_contacts').doc(id).delete();
@@ -171,7 +160,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  
   void showAddContactDialog() {
     String name = '';
     String phone = '';
@@ -219,6 +207,19 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
+  }
+
+  @override
+  void initstate() {
+    super.initState();
+    socket = IO.io(
+      'https://live-location-tracking-zo66.onrender.com',
+      IO.OptionBuilder()
+          .setTransports(['websocket'])
+          .disableAutoConnect()
+          .build(),
+    );
+    socket.connect();
   }
 
   @override
@@ -368,39 +369,42 @@ class _HomeScreenState extends State<HomeScreen> {
       isTracking = true;
     });
 
-    
     socket = IO.io(
-      'https://live-location-tracking-zo66.onrender.com', 
+      'https://live-location-tracking-zo66.onrender.com',
       IO.OptionBuilder()
-          .setTransports(['websocket']) 
-          .disableAutoConnect() 
+          .setTransports(['websocket'])
+          .disableAutoConnect()
           .build(),
     );
 
-    
     socket.connect();
 
-    
-    Geolocator.getPositionStream().listen((Position position) async {
+    Geolocator.getPositionStream(
+      locationSettings: LocationSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 0,
+        timeLimit: Duration(seconds: 1),
+      ),
+    ).listen((Position position) async {
       double latitude = position.latitude;
       double longitude = position.longitude;
 
       sendLocationToChatroom(latitude, longitude);
-
-      if (!smsSent) {
-        bool smsSuccess = await sendSmsToContacts();
-        smsSent = true;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(smsSuccess
-                ? 'Live tracking activated. SMS sent to close contacts.'
-                : 'Failed to send SMS. Please try again.'),
-            duration: Duration(seconds: 3),
-            backgroundColor: smsSuccess ? Colors.green : Colors.red,
-          ),
-        );
-      }
     });
+
+    if (!smsSent) {
+      bool smsSuccess = await sendSmsToContacts();
+      smsSent = true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(smsSuccess
+              ? 'Live tracking activated. SMS sent to close contacts.'
+              : 'Failed to send SMS. Please try again.'),
+          duration: Duration(seconds: 3),
+          backgroundColor: smsSuccess ? Colors.green : Colors.red,
+        ),
+      );
+    }
 
     socket.on('message', (data) {
       print('Received message from server: $data');
@@ -423,10 +427,8 @@ class _HomeScreenState extends State<HomeScreen> {
     };
     print('Sending location data to chatroom: $locationData');
 
-    socket.emit(
-        'send location', locationData); 
+    socket.emit('location', locationData);
   }
-
 
   Future<bool> sendSmsToContacts() async {
     String accountSid = dotenv.env['twilio_accountSid'] ?? '';
@@ -468,13 +470,13 @@ class _HomeScreenState extends State<HomeScreen> {
       return false;
     }
   }
+
   Future<List<String>> fetchCloseContacts() async {
     List<String> contacts = [];
     final snapshot =
         await FirebaseFirestore.instance.collection('close_contacts').get();
     for (var doc in snapshot.docs) {
-      contacts.add(
-          doc['phone']); 
+      contacts.add(doc['phone']);
     }
     return contacts;
   }

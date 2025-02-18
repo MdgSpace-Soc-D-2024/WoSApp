@@ -1,26 +1,20 @@
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:crypto/crypto.dart';
 import 'package:dialogflow_flutter/dialogflowFlutter.dart';
 import 'package:dialogflow_flutter/googleAuth.dart';
 import 'package:dialogflow_flutter/language.dart';
-import 'package:encrypt/encrypt.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_database/firebase_database.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
-import 'package:pointycastle/api.dart' as pc;
-import 'package:pointycastle/digests/sha256.dart';
-import 'package:uni_links5/uni_links.dart';
+import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:wosapp/main.dart';
 import 'package:wosapp/reusable_widgets/reusable_widgets.dart';
 import 'package:wosapp/screens/gps_screen.dart';
 import 'package:wosapp/screens/livetracking_screen.dart';
 import 'package:wosapp/screens/signin_screen.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:uuid/uuid.dart';
 import 'package:wosapp/utls/color_utls.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -127,10 +121,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   SizedBox(height: 40.0),
                   gps(context, "GPS", () {
-                    Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (context) => GPSNavigationScreen()));
+                    Navigator.push(context,
+                        MaterialPageRoute(builder: (context) => Gps()));
                   }),
                   SizedBox(height: 20.0),
                   gps(context, "Live Tracking", () {
@@ -228,7 +220,7 @@ class _ChatScreenState extends State<ChatScreen> {
         await AuthGoogle(fileJson: "assets/robo-way-nafc-5b483855702a.json")
             .build();
     final dialogflow =
-        DialogFlow(authGoogle: authGoogle, language: Language.ENGLISH);
+        DialogFlow(authGoogle: authGoogle, language: Language.english);
 
     final response = await dialogflow.detectIntent(message);
     final botMessage = response.getMessage() ?? "I didn't understand that!";
@@ -239,15 +231,128 @@ class _ChatScreenState extends State<ChatScreen> {
     if (response.queryResult?.intent?.displayName == "SOS") {
       onSOSPressed();
     }
-    else (response.queryResult?.intent?.displayName == "Following") {
-      startLiveTracking();
+    if (response.queryResult?.intent?.displayName == "Following") {
+      following();
     }
-
     await _firestore.collection('chats').add({
       'text': botMessage,
       'isUser': false,
       'timestamp': Timestamp.now(),
     });
+  }
+
+  bool smsSent = false;
+  bool isTracking = false;
+  late IO.Socket socket;
+  void following() async {
+    setState(() {
+      isTracking = true;
+    });
+
+    socket = IO.io(
+      'https://live-location-tracking-zo66.onrender.com',
+      IO.OptionBuilder()
+          .setTransports(['websocket'])
+          .disableAutoConnect()
+          .build(),
+    );
+
+    socket.connect();
+
+    Geolocator.getPositionStream().listen((Position position) async {
+      double latitude = position.latitude;
+      double longitude = position.longitude;
+
+      sendLocationToChatroom(latitude, longitude);
+
+      if (!smsSent) {
+        bool smsSuccess = await sendSmsToContacts();
+        smsSent = true;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(smsSuccess
+                ? 'Live tracking activated. SMS sent to close contacts.'
+                : 'Failed to send SMS. Please try again.'),
+            duration: Duration(seconds: 3),
+            backgroundColor: smsSuccess ? Colors.green : Colors.red,
+          ),
+        );
+      }
+    });
+
+    socket.on('message', (data) {
+      print('Received message from server: $data');
+    });
+
+    socket.on('disconnect', (_) {
+      print('Disconnected from server');
+    });
+
+    socket.on('connect_error', (error) {
+      print('Connection error: $error');
+    });
+  }
+
+  void sendLocationToChatroom(double latitude, double longitude) {
+    final locationData = {
+      'type': 'location',
+      'latitude': latitude,
+      'longitude': longitude,
+    };
+    print('Sending location data to chatroom: $locationData');
+
+    socket.emit('send location', locationData);
+  }
+
+  Future<bool> sendSmsToContacts() async {
+    String accountSid = dotenv.env['twilio_accountSid'] ?? '';
+    String authToken = dotenv.env['twilio_authToken'] ?? '';
+    String fromPhoneNumber = dotenv.env['twilio_fromPhoneNumber'] ?? '';
+
+    String chatroomURL = "https://live-location-tracking-zo66.onrender.com";
+
+    var url = Uri.parse(
+        'https://api.twilio.com/2010-04-01/Accounts/$accountSid/Messages.json');
+
+    try {
+      List<String> contacts = await fetchCloseContacts();
+
+      for (String contact in contacts) {
+        var response = await http.post(
+          url,
+          headers: {
+            'Authorization':
+                'Basic ${base64Encode(utf8.encode('$accountSid:$authToken'))}',
+          },
+          body: {
+            'From': fromPhoneNumber,
+            'To': contact,
+            'Body':
+                '🚨 User is in Danger, Someone is chasing her!!! 🚨\nJoin the chatroom and track live location: $chatroomURL',
+          },
+        );
+
+        if (response.statusCode != 201) {
+          print('Failed to send SMS to $contact. Response: ${response.body}');
+          return false;
+        }
+      }
+
+      return true;
+    } catch (e) {
+      print('Error sending SMS: $e');
+      return false;
+    }
+  }
+
+  Future<List<String>> fetchCloseContacts() async {
+    List<String> contacts = [];
+    final snapshot =
+        await FirebaseFirestore.instance.collection('close_contacts').get();
+    for (var doc in snapshot.docs) {
+      contacts.add(doc['phone']);
+    }
+    return contacts;
   }
 
   @override
@@ -338,61 +443,3 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-
-void initDeepLinking() async {
-  try {
-    final link = await getInitialLink();
-    if (link != null && link.contains('sos')) {
-      sendSOSAlert();
-    }
-  } catch (e) {
-    print('Error: $e');
-  }
-
-  linkStream.listen((link) {
-    if (link != null && link.contains('sos')) {
-      sendSOSAlert();
-    }
-  });
-}
-
-void sendSOSAlert() {
-  print('SOS Alert sent!');
-  onSOSPressed();
-}
-
-// class MainScreen extends StatefulWidget {
-//   @override
-//   Chatbot_sos createState() => Chatbot_sos();
-// }
-
-// void chatbot() async {
-//   WidgetsFlutterBinding.ensureInitialized();
-//   await Firebase.initializeApp();
-//   runApp(MyApp());
-// }
-
-// class Chatbot_sos extends State<MainScreen> {
-//   @override
-//   void initState() {
-//     super.initState();
-//     print("called");
-
-//     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-//       print(message.data);
-//       if (message.data['action'] == 'triggerSOS') {
-//         triggerSOS();
-//       }
-//     });
-//   }
-
-//   void triggerSOS() {
-//     onSOSPressed();
-//     print('SOS Activated!');
-//   }
-
-//   @override
-//   Widget build(BuildContext context) {
-//     throw UnimplementedError();
-//   }
-// }
